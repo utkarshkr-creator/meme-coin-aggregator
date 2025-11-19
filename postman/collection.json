@@ -1,0 +1,276 @@
+{
+  "info": {
+    "name": "Meme Coin Aggregator API",
+    "description": "Real-time meme coin data aggregation service",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Get All Tokens (Default)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Paginated)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Sort by Volume)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?sortBy=volume&period=24h&limit=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            {
+              "key": "sortBy",
+              "value": "volume"
+            },
+            {
+              "key": "period",
+              "value": "24h"
+            },
+            {
+              "key": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Filter by MinVolume)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?minVolume=500&sortBy=volume",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            {
+              "key": "minVolume",
+              "value": "500"
+            },
+            {
+              "key": "sortBy",
+              "value": "volume"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Sort by Price Change)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?sortBy=priceChange&period=1h",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            {
+              "key": "sortBy",
+              "value": "priceChange"
+            },
+            {
+              "key": "period",
+              "value": "1h"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Invalid Sort & Period)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?sortBy=invalid&period=invalid&limit=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            { "key": "sortBy", "value": "invalid" },
+            { "key": "period", "value": "invalid" },
+            { "key": "limit", "value": "5" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Tokens (Cursor Pagination)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Has nextCursor or no more', function () {",
+              "  var body = pm.response.json();",
+              "  pm.expect(body).to.have.property('pagination');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?limit=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search Tokens (SOL)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens/search/SOL",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens", "search", "SOL"]
+        }
+      }
+    },
+    {
+      "name": "Subscribe Token (WS Notes)",
+      "description": "In your Socket.io client, emit `subscribe:token` with a token address to receive scoped `token:update` events.",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "Search Tokens (BONK)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens/search/BONK",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens", "search", "BONK"]
+        }
+      }
+    },
+    {
+      "name": "Get Token by Address",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens/DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens", "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"]
+        }
+      }
+    },
+    {
+      "name": "Invalid Token Address (404)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens/invalid_address",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens", "invalid_address"]
+        }
+      }
+    },
+    {
+      "name": "Rapid Request 1",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Response time < 2000ms\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(2000);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/tokens?limit=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "tokens"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
+        }
+      }
+    }
+    ,
+    {
+      "name": "WebSocket Filters (Socket.io)",
+      "description": "Use a Socket.io client to connect to ws(s)://<host> and emit `subscribe:filters` with a JSON payload like {\n  \"sortBy\": \"volume\", \n  \"period\": \"24h\", \n  \"minVolume\": 0, \n  \"minLiquidity\": 0, \n  \"limit\": 20\n}. You will receive `tokens:refresh` snapshots without making HTTP calls. Emit `unsubscribe:filters` to leave.",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        }
+      }
+    }
+  ]
+}

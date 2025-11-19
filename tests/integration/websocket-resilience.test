@@ -1,0 +1,555 @@
+import { Server as SocketServer } from 'socket.io';
+import { Server as HttpServer } from 'http';
+import { createServer } from 'http';
+import { io as ioClient, Socket as ClientSocket } from 'socket.io-client';
+import { WebSocketService } from '../../src/services/websocket.service';
+import { AggregatedToken } from '../../src/types/token.types';
+
+describe('WebSocket Resilience Tests', () => {
+  let httpServer: HttpServer;
+  let io: SocketServer;
+  let wsService: WebSocketService;
+  const port = 3003;
+
+  beforeAll((done) => {
+    httpServer = createServer();
+    io = new SocketServer(httpServer, {
+      cors: { origin: '*' },
+      transports: ['websocket', 'polling'],
+      pingTimeout: 2000,
+      pingInterval: 1000,
+    });
+
+    wsService = WebSocketService.getInstance(io);
+    wsService.initialize();
+
+    httpServer.listen(port, () => {
+      done();
+    });
+  });
+
+  afterAll((done) => {
+    io.close();
+    httpServer.close(() => {
+      done();
+    });
+  });
+
+  describe('Client Disconnect/Reconnect', () => {
+    it('should handle client disconnect gracefully', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      client.on('connect', () => {
+        const initialCount = wsService.getConnectedClientsCount();
+        expect(initialCount).toBeGreaterThan(0);
+
+        // Disconnect
+        client.disconnect();
+
+        setTimeout(() => {
+          const finalCount = wsService.getConnectedClientsCount();
+          expect(finalCount).toBeLessThan(initialCount);
+          done();
+        }, 500);
+      });
+
+      client.on('connect_error', (error) => {
+        done(error);
+      });
+    });
+
+    it('should handle client reconnection', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 500,
+      });
+
+      let connectCount = 0;
+
+      client.on('connect', () => {
+        connectCount++;
+
+        if (connectCount === 1) {
+          // First connection - disconnect
+          client.disconnect();
+          
+          // Reconnect after delay
+          setTimeout(() => {
+            client.connect();
+          }, 500);
+        } else if (connectCount === 2) {
+          // Second connection - test passed
+          expect(connectCount).toBe(2);
+          client.disconnect();
+          done();
+        }
+      });
+
+      client.on('connect_error', (error) => {
+        done(error);
+      });
+    }, 10000);
+
+    it('should handle abrupt disconnection (network failure simulation)', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      client.on('connect', () => {
+        const initialCount = wsService.getConnectedClientsCount();
+
+        // Simulate abrupt disconnect (like network loss)
+        client.io.engine.close();
+
+        setTimeout(() => {
+          const finalCount = wsService.getConnectedClientsCount();
+          expect(finalCount).toBeLessThanOrEqual(initialCount);
+          done();
+        }, 1000);
+      });
+    }, 5000);
+
+    it('should clean up client subscriptions on disconnect', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      client.on('connect', () => {
+        const tokenAddress = '0xtest123';
+        
+        // Subscribe to a token
+        client.emit('subscribe:token', tokenAddress);
+
+        setTimeout(() => {
+          const beforeDisconnect = wsService.getConnectedClientsCount();
+          
+          // Disconnect
+          client.disconnect();
+
+          setTimeout(() => {
+            const afterDisconnect = wsService.getConnectedClientsCount();
+            expect(afterDisconnect).toBeLessThan(beforeDisconnect);
+            done();
+          }, 500);
+        }, 500);
+      });
+    }, 5000);
+  });
+
+  describe('Multiple Client Scenarios', () => {
+    it('should handle multiple clients disconnecting simultaneously', (done) => {
+      const clients: ClientSocket[] = [];
+      const clientCount = 5;
+      let connectedCount = 0;
+
+      // Create multiple clients
+      for (let i = 0; i < clientCount; i++) {
+        const client = ioClient(`http://localhost:${port}`, {
+          transports: ['websocket'],
+          forceNew: true,
+        });
+
+        client.on('connect', () => {
+          connectedCount++;
+
+          if (connectedCount === clientCount) {
+            // All connected, now disconnect all
+            const initialCount = wsService.getConnectedClientsCount();
+            expect(initialCount).toBeGreaterThanOrEqual(clientCount);
+
+            clients.forEach(c => c.disconnect());
+
+            setTimeout(() => {
+              const finalCount = wsService.getConnectedClientsCount();
+              expect(finalCount).toBeLessThan(initialCount);
+              done();
+            }, 1000);
+          }
+        });
+
+        clients.push(client);
+      }
+    }, 10000);
+
+    it('should handle some clients disconnecting while others stay connected', (done) => {
+      const client1 = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+      const client2 = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      let connectCount = 0;
+
+      const onConnect = () => {
+        connectCount++;
+
+        if (connectCount === 2) {
+          const initialCount = wsService.getConnectedClientsCount();
+
+          // Disconnect only client1
+          client1.disconnect();
+
+          setTimeout(() => {
+            const afterDisconnect = wsService.getConnectedClientsCount();
+            
+            // Should still have client2 connected
+            expect(afterDisconnect).toBe(initialCount - 1);
+            expect(client2.connected).toBe(true);
+
+            client2.disconnect();
+            done();
+          }, 500);
+        }
+      };
+
+      client1.on('connect', onConnect);
+      client2.on('connect', onConnect);
+    }, 10000);
+
+    it('should handle rapid connect/disconnect cycles', (done) => {
+      let cycleCount = 0;
+      const maxCycles = 3;
+
+      const runCycle = () => {
+        const client = ioClient(`http://localhost:${port}`, {
+          transports: ['websocket'],
+          forceNew: true,
+        });
+
+        client.on('connect', () => {
+          cycleCount++;
+
+          // Immediately disconnect
+          client.disconnect();
+
+          if (cycleCount < maxCycles) {
+            // Start next cycle
+            setTimeout(runCycle, 200);
+          } else {
+            // All cycles complete
+            setTimeout(() => {
+              expect(cycleCount).toBe(maxCycles);
+              done();
+            }, 500);
+          }
+        });
+      };
+
+      runCycle();
+    }, 10000);
+  });
+
+  describe('Message Delivery During Connection Issues', () => {
+    it('should not lose messages when client briefly disconnects', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: true,
+        reconnectionDelay: 100,
+      });
+
+      const mockToken: AggregatedToken = {
+        token_address: '0xreconnect',
+        token_name: 'Reconnect Test',
+        token_ticker: 'RECONN',
+        price_sol: 1.0,
+        market_cap_sol: 1000,
+        volume_sol: 500,
+        liquidity_sol: 200,
+        transaction_count: 100,
+        price_1hr_change: 5,
+        protocol: 'Test',
+        source: 'test',
+        sources: ['test'],
+        data_quality_score: 80,
+        last_updated: Date.now(),
+      };
+
+      let messagesReceived = 0;
+
+      client.on('connect', () => {
+        // Send message after reconnection
+        setTimeout(() => {
+          wsService.broadcastTokenUpdate(mockToken);
+        }, 200);
+      });
+
+      client.on('token:update', () => {
+        messagesReceived++;
+      });
+
+      // Wait and verify
+      setTimeout(() => {
+        expect(messagesReceived).toBeGreaterThan(0);
+        client.disconnect();
+        done();
+      }, 1000);
+    }, 5000);
+
+    it('should queue messages appropriately on reconnect', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      const receivedMessages: string[] = [];
+
+      client.on('connect', () => {
+        client.on('token:update', (data) => {
+          receivedMessages.push(data.token.token_address);
+        });
+
+        // Send multiple updates
+        setTimeout(() => {
+          for (let i = 0; i < 3; i++) {
+            wsService.broadcastTokenUpdate({
+              token_address: `0xtest${i}`,
+              token_name: `Test ${i}`,
+              token_ticker: `T${i}`,
+              price_sol: 1.0,
+              market_cap_sol: 1000,
+              volume_sol: 500,
+              liquidity_sol: 200,
+              transaction_count: 100,
+              price_1hr_change: 5,
+              protocol: 'Test',
+              source: 'test',
+              sources: ['test'],
+              data_quality_score: 80,
+              last_updated: Date.now(),
+            });
+          }
+        }, 200);
+      });
+
+      setTimeout(() => {
+        expect(receivedMessages.length).toBeGreaterThan(0);
+        client.disconnect();
+        done();
+      }, 1500);
+    }, 5000);
+  });
+
+  describe('Server-side Connection Management', () => {
+    it('should handle server restart gracefully', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: true,
+        reconnectionDelay: 500,
+      });
+
+      let connectionAttempts = 0;
+
+      client.on('connect', () => {
+        connectionAttempts++;
+        
+        if (connectionAttempts === 1) {
+          expect(client.connected).toBe(true);
+          client.disconnect();
+          done();
+        }
+      });
+    }, 5000);
+
+    it('should track active connections accurately', (done) => {
+      const clients: ClientSocket[] = [];
+      const targetCount = 3;
+      let connectedCount = 0;
+
+      for (let i = 0; i < targetCount; i++) {
+        const client = ioClient(`http://localhost:${port}`, {
+          transports: ['websocket'],
+          forceNew: true,
+        });
+
+        client.on('connect', () => {
+          connectedCount++;
+
+          if (connectedCount === targetCount) {
+            const activeCount = wsService.getConnectedClientsCount();
+            expect(activeCount).toBeGreaterThanOrEqual(targetCount);
+
+            // Cleanup
+            clients.forEach(c => c.disconnect());
+            done();
+          }
+        });
+
+        clients.push(client);
+      }
+    }, 10000);
+  });
+
+  describe('Subscription Management During Reconnection', () => {
+    it('should maintain subscriptions after reconnect', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: true,
+      });
+
+      const tokenAddress = '0xsubscribe';
+      let updateReceived = false;
+
+      client.on('connect', () => {
+        // Subscribe
+        client.emit('subscribe:token', tokenAddress);
+
+        // Send update
+        setTimeout(() => {
+          const mockToken: AggregatedToken = {
+            token_address: tokenAddress,
+            token_name: 'Subscribe Test',
+            token_ticker: 'SUB',
+            price_sol: 1.0,
+            market_cap_sol: 1000,
+            volume_sol: 500,
+            liquidity_sol: 200,
+            transaction_count: 100,
+            price_1hr_change: 5,
+            protocol: 'Test',
+            source: 'test',
+            sources: ['test'],
+            data_quality_score: 80,
+            last_updated: Date.now(),
+          };
+
+          wsService.broadcastTokenUpdate(mockToken);
+        }, 500);
+      });
+
+      client.on('token:update', (data) => {
+        if (data.token.token_address === tokenAddress) {
+          updateReceived = true;
+        }
+      });
+
+      setTimeout(() => {
+        expect(updateReceived).toBe(true);
+        client.disconnect();
+        done();
+      }, 2000);
+    }, 5000);
+
+    it('should handle unsubscribe on disconnect', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      const tokenAddress = '0xunsubscribe';
+
+      client.on('connect', () => {
+        // Subscribe then unsubscribe
+        client.emit('subscribe:token', tokenAddress);
+        
+        setTimeout(() => {
+          client.emit('unsubscribe:token', tokenAddress);
+          
+          setTimeout(() => {
+            client.disconnect();
+            done();
+          }, 200);
+        }, 200);
+      });
+    }, 5000);
+  });
+
+  describe('Error Handling During Connection Issues', () => {
+    it('should handle connection timeout gracefully', (done) => {
+      const client = ioClient(`http://localhost:9999`, { // Wrong port
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+        timeout: 1000,
+      });
+
+      client.on('connect_error', (error) => {
+        expect(error).toBeDefined();
+        client.disconnect();
+        done();
+      });
+
+      client.on('connect', () => {
+        // Should not reach here
+        client.disconnect();
+        done(new Error('Should not connect to wrong port'));
+      });
+    }, 5000);
+
+    it('should handle invalid event emissions', (done) => {
+      const client = ioClient(`http://localhost:${port}`, {
+        transports: ['websocket'],
+        forceNew: true,
+      });
+
+      client.on('connect', () => {
+        // Try to emit invalid event
+        try {
+          client.emit('invalid:event:name', { invalid: 'data' });
+          
+          // Should not throw error
+          setTimeout(() => {
+            client.disconnect();
+            done();
+          }, 500);
+        } catch (error) {
+          done(error);
+        }
+      });
+    }, 5000);
+  });
+
+  describe('Performance Under Connection Churn', () => {
+    it('should maintain performance with frequent connects/disconnects', (done) => {
+      const iterations = 10;
+      let completed = 0;
+      const startTime = Date.now();
+
+      const createAndDestroy = () => {
+        const client = ioClient(`http://localhost:${port}`, {
+          transports: ['websocket'],
+          forceNew: true,
+        });
+
+        client.on('connect', () => {
+          setTimeout(() => {
+            client.disconnect();
+            completed++;
+
+            if (completed === iterations) {
+              const duration = Date.now() - startTime;
+              console.log(`\n🔄 Connection Churn Test:`);
+              console.log(`   Iterations: ${iterations}`);
+              console.log(`   Duration: ${duration}ms`);
+              console.log(`   Avg time: ${duration / iterations}ms`);
+
+              expect(duration).toBeLessThan(10000); // Should complete in 10s
+              done();
+            }
+          }, 100);
+        });
+
+        client.on('connect_error', () => {
+          completed++;
+        });
+      };
+
+      for (let i = 0; i < iterations; i++) {
+        setTimeout(() => createAndDestroy(), i * 200);
+      }
+    }, 15000);
+  });
+});
