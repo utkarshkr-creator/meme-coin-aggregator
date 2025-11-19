@@ -34,7 +34,6 @@ export function createApp(): Application {
       environment: config.env,
     });
   });
-
   // API routes
   app.use('/api/tokens', tokenRoutes);
 
