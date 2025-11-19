@@ -8,6 +8,11 @@ A high-performance, real-time cryptocurrency data aggregator built with Node.js,
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Test Coverage](https://img.shields.io/badge/coverage-82%25-brightgreen.svg)](https://github.com/utkarshkr-creator/meme-coin-aggregator)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+## 🌐 Live API / Base URL
+
+The backend service is deployed on Railway:
+
+**Base URL:** https://meme-coin-aggregator-production-0925.up.railway.app
 
 ## ✨ Features
 
