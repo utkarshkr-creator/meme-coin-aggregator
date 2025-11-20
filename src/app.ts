@@ -45,7 +45,7 @@ export function createApp(): Application {
     });
   });
 
-  // Error handler (must be last)
+  // Error handler
   app.use(errorHandler);
 
   return app;
