@@ -21,6 +21,12 @@ The backend service is deployed on Railway:
 
 > 🔗 Click the thumbnail to watch the demo on YouTube.
 
+## 🖥️ Frontend (UI Review)
+
+For reviewing the UI and frontend implementation, refer to the separate frontend repository:
+
+🔗 **Frontend Repo:** https://github.com/utkarshkr-creator/meme-coin-tracker.git
+
 ## ✨ Features
 
 ### 🔥 Core Features
