@@ -13,7 +13,7 @@ A high-performance, real-time cryptocurrency data aggregator built with Node.js,
 
 The backend service is deployed on Railway:
 
-**Base URL:** https://meme-coin-aggregator-production-0925.up.railway.app
+**Base URL:** meme-coin-aggregator-production-0925.up.railway.app
 
 ## 🎥 Demo Video
 
